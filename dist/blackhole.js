@@ -3,10 +3,10 @@
  const canvas=document.getElementById('orbit'),hero=document.querySelector('.hero');
  const motion=matchMedia('(prefers-reduced-motion: reduce)');
  const intro=document.createElement('div');intro.className='singularity-intro';intro.innerHTML='<div class="intro-name">SAI SRIKIRAN J<span>AI APPLICATIONS & AGENTS</span></div><div class="intro-caption">A WORLD OF POSSIBILITIES<span class="intro-line"></span></div><button class="skip-intro">Skip intro ↗</button>';hero.append(intro);
- let skip=motion.matches||Boolean(location.hash),visible=true,frame=0,last=0,start=performance.now(),finished=false;
- try{skip=skip||sessionStorage.getItem('singularity-seen')==='1'}catch{}
- const button=intro.querySelector('button');
- function finish(){if(finished)return;finished=true;document.querySelectorAll('[data-intro-inert]').forEach(el=>{el.inert=false;el.removeAttribute('data-intro-inert')});document.documentElement.classList.remove('singularity-opening');intro.classList.add('is-gone');try{sessionStorage.setItem('singularity-seen','1')}catch{}if(document.activeElement===button)document.querySelector('.hero-copy a').focus({preventScroll:true});setTimeout(()=>intro.remove(),1200)}
+ let skip=motion.matches,visible=true,frame=0,last=0,start=performance.now(),finished=false;
+
+ const button=intro.querySelector('button');window.scrollTo({top:0,left:0,behavior:'instant'});
+ function finish(){if(finished)return;finished=true;clearTimeout(window.introBootTimeout);window.scrollTo({top:0,left:0,behavior:'instant'});document.querySelectorAll('[data-intro-inert]').forEach(el=>{el.inert=false;el.removeAttribute('data-intro-inert')});document.documentElement.classList.remove('singularity-opening');intro.classList.add('is-gone');if(document.activeElement===button)document.querySelector('.hero-copy a').focus({preventScroll:true});setTimeout(()=>intro.remove(),1200)}
  button.onclick=()=>{skip=true;finish()};
  const escape=e=>{if(e.key==='Escape'){skip=true;finish()}};document.addEventListener('keydown',escape);
  if(skip){finish()}else{document.documentElement.classList.add('singularity-opening');document.querySelectorAll('header,.hero-copy,.floating').forEach(el=>{el.inert=true;el.setAttribute('data-intro-inert','')})}
@@ -67,7 +67,7 @@
  const uniforms=Object.fromEntries(['resolution','time','arrival','pointer'].map(k=>[k,gl.getUniformLocation(program,k)]));
  let px=0,py=0,tx=0,ty=0;
  hero.addEventListener('pointermove',e=>{if(e.pointerType!=='touch'&&!motion.matches){tx=e.clientX/innerWidth-.5;ty=.5-e.clientY/innerHeight}});hero.addEventListener('pointerleave',()=>{tx=ty=0});
- function resize(){const ratio=Math.min(1,1200/hero.clientWidth);canvas.width=Math.round(hero.clientWidth*ratio);canvas.height=Math.round(hero.clientHeight*ratio);gl.viewport(0,0,canvas.width,canvas.height)}resize();addEventListener('resize',()=>{resize();if(motion.matches)draw(performance.now())});
+ function resize(){const ratio=Math.min(1,1200/hero.clientWidth);canvas.width=Math.round(hero.clientWidth*ratio);canvas.height=Math.round(hero.clientHeight*ratio);gl.viewport(0,0,canvas.width,canvas.height)}resize();new ResizeObserver(()=>{resize();if(motion.matches)draw(performance.now())}).observe(hero);addEventListener('resize',()=>{resize();if(motion.matches)draw(performance.now())});
  function draw(now){frame=0;if(!visible||document.hidden)return;if(now-last<32&&!motion.matches){frame=requestAnimationFrame(draw);return}last=now;
   const elapsed=(now-start)/1000;let t=skip||motion.matches?1:Math.max(0,Math.min(1,(elapsed-2.7)/2.2));const eased=t*t*(3.-2.*t);
   px+=(tx-px)*.04;py+=(ty-py)*.04;
