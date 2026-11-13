@@ -3,10 +3,10 @@
  const canvas=document.getElementById('orbit'),hero=document.querySelector('.hero');
  const motion=matchMedia('(prefers-reduced-motion: reduce)');
  const intro=document.createElement('div');intro.className='singularity-intro';intro.innerHTML='<div class="intro-name">SAI SRIKIRAN J<span>AI APPLICATIONS & AGENTS</span></div><div class="intro-caption">A WORLD OF POSSIBILITIES<span class="intro-line"></span></div><button class="skip-intro">Skip intro ↗</button>';hero.append(intro);
- let skip=motion.matches,visible=true,frame=0,last=0,start=performance.now(),finished=false;
+ let skip=motion.matches,visible=true,frame=0,last=0,start=performance.now(),finished=false,revealing=false;
 
  const button=intro.querySelector('button');window.scrollTo({top:0,left:0,behavior:'instant'});
- function finish(){if(finished)return;finished=true;clearTimeout(window.introBootTimeout);window.scrollTo({top:0,left:0,behavior:'instant'});document.querySelectorAll('[data-intro-inert]').forEach(el=>{el.inert=false;el.removeAttribute('data-intro-inert')});document.documentElement.classList.remove('singularity-opening');intro.classList.add('is-gone');if(document.activeElement===button)document.querySelector('.hero-copy a').focus({preventScroll:true});setTimeout(()=>intro.remove(),1200)}
+ function finish(){if(finished)return;finished=true;clearTimeout(window.introBootTimeout);window.scrollTo({top:0,left:0,behavior:'instant'});document.querySelectorAll('[data-intro-inert]').forEach(el=>{el.inert=false;el.removeAttribute('data-intro-inert')});document.documentElement.classList.remove('singularity-opening','singularity-revealing');intro.classList.add('is-gone');if(document.activeElement===button)document.querySelector('.hero-copy a').focus({preventScroll:true});setTimeout(()=>intro.remove(),1200)}
  button.onclick=()=>{skip=true;finish()};
  const escape=e=>{if(e.key==='Escape'){skip=true;finish()}};document.addEventListener('keydown',escape);
  if(skip){finish()}else{document.documentElement.classList.add('singularity-opening');document.querySelectorAll('header,.hero-copy,.floating').forEach(el=>{el.inert=true;el.setAttribute('data-intro-inert','')})}
@@ -30,7 +30,7 @@
  }
  void main(){
   vec2 uv=(gl_FragCoord.xy-.5*resolution)/resolution.y;
-  float scale=mix(.20,.255,arrival);vec2 p=(uv-pointer*.006)/scale;
+  float scale=mix(.22,.255,arrival);vec2 p=(uv-pointer*.006)/scale;
   float tilt=mix(-.075,-.13,arrival);p=mat2(cos(tilt),-sin(tilt),sin(tilt),cos(tilt))*p;
   float r=length(p);float a=atan(p.y,p.x);
   vec3 col=vec3(.009,.013,.014);
@@ -67,12 +67,13 @@
  const uniforms=Object.fromEntries(['resolution','time','arrival','pointer'].map(k=>[k,gl.getUniformLocation(program,k)]));
  let px=0,py=0,tx=0,ty=0;
  hero.addEventListener('pointermove',e=>{if(e.pointerType!=='touch'&&!motion.matches){tx=e.clientX/innerWidth-.5;ty=.5-e.clientY/innerHeight}});hero.addEventListener('pointerleave',()=>{tx=ty=0});
- function resize(){const ratio=Math.min(1,1200/hero.clientWidth);canvas.width=Math.round(hero.clientWidth*ratio);canvas.height=Math.round(hero.clientHeight*ratio);gl.viewport(0,0,canvas.width,canvas.height)}resize();new ResizeObserver(()=>{resize();if(motion.matches)draw(performance.now())}).observe(hero);addEventListener('resize',()=>{resize();if(motion.matches)draw(performance.now())});
- function draw(now){frame=0;if(!visible||document.hidden)return;if(now-last<32&&!motion.matches){frame=requestAnimationFrame(draw);return}last=now;
-  const elapsed=(now-start)/1000;let t=skip||motion.matches?1:Math.max(0,Math.min(1,(elapsed-2.7)/2.2));const eased=t*t*(3.-2.*t);
-  px+=(tx-px)*.04;py+=(ty-py)*.04;
+ function resize(){const ratio=Math.min(devicePixelRatio,1.25,1440/hero.clientWidth);canvas.width=Math.round(hero.clientWidth*ratio);canvas.height=Math.round(hero.clientHeight*ratio);gl.viewport(0,0,canvas.width,canvas.height)}resize();new ResizeObserver(()=>{resize();resume()}).observe(hero);addEventListener('resize',()=>{resize();resume()});
+ function draw(now){frame=0;if(!visible||document.hidden)return;const dt=last?Math.min((now-last)/1000,.05):.016;last=now;
+  const elapsed=(now-start)/1000;let t=skip||motion.matches?1:Math.max(0,Math.min(1,(elapsed-1.8)/3.6));const eased=t*t*t*(t*(t*6-15)+10);
+  const damping=1-Math.exp(-3*dt);px+=(tx-px)*damping;py+=(ty-py)*damping;
+  if(elapsed>=2.7&&!revealing&&!finished){revealing=true;document.documentElement.classList.add('singularity-revealing');intro.classList.add('is-gone')}
   gl.uniform2f(uniforms.resolution,canvas.width,canvas.height);gl.uniform1f(uniforms.time,motion.matches?0:elapsed);gl.uniform1f(uniforms.arrival,eased);gl.uniform2f(uniforms.pointer,px,py);gl.drawArrays(gl.TRIANGLES,0,6);
-  hero.style.setProperty('--arrival',eased);if(t>=.98){finish();clearTimeout(failSafe)}
+  hero.style.setProperty('--arrival',eased);if(t>=1){finish();clearTimeout(failSafe)}
   if(!motion.matches)frame=requestAnimationFrame(draw);
  }
  function resume(){cancelAnimationFrame(frame);frame=requestAnimationFrame(draw)}
