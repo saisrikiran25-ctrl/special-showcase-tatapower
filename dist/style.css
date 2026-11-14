@@ -23,7 +23,12 @@ a,button{-webkit-tap-highlight-color:transparent}
 a:focus-visible,button:focus-visible{outline:2px solid var(--amber);outline-offset:5px}
 h1,h2,h3{font-family:var(--display);font-weight:600;margin:0;letter-spacing:-.045em;line-height:1}
 em{font-family:var(--serif);font-style:italic;font-weight:400;color:var(--amber);letter-spacing:-.01em}
-sup{font-size:.62em;color:var(--muted);margin-left:5px;vertical-align:super}
+/* counts are small glowing badges (same language as a cart bubble), not superscripts */
+.count{display:inline-grid;place-items:center;min-width:2.1em;height:2.1em;padding:0 .55em;margin-left:.7em;border-radius:99px;background:rgba(255,179,107,.12);border:1px solid rgba(255,179,107,.5);box-shadow:0 0 14px rgba(255,179,107,.18);color:var(--amber);font:700 9px/1 var(--body);letter-spacing:.06em;font-variant-numeric:tabular-nums;vertical-align:middle;text-shadow:none}
+.nav-pill .count{margin-left:.5em;font-size:8.5px}
+.filter button .count{margin-left:.6em}
+.filter button[aria-pressed=true] .count{background:#050506;border-color:#050506;box-shadow:none}
+.menu nav a .count{font-size:12px;margin-left:.9em;vertical-align:middle;transform:translateY(-.5em)}
 [hidden]{display:none!important}
 ::selection{background:var(--amber);color:#000}
 
@@ -143,7 +148,7 @@ html.live .hero-bottom{transition:none}
 .section-head{max-width:980px;position:relative}
 .section-head .eyebrow{display:block;margin-bottom:26px;color:var(--muted)}
 .section-head h2{font-size:clamp(64px,10vw,170px);line-height:.88;margin:0 0 30px}
-.section-head h2 sup{font:500 .16em var(--body);letter-spacing:.1em;color:var(--amber);margin-left:12px}
+.section-head h2 .count{font:700 clamp(13px,1.5vw,22px)/1 var(--display);margin-left:.8em;vertical-align:top;transform:translateY(.9em);letter-spacing:.04em}
 .section-head>p{max-width:560px;font-size:clamp(16px,1.5vw,21px);line-height:1.6;color:#d5cfc3;margin:0}
 .filter{display:flex;gap:10px;margin:48px 0 40px;flex-wrap:wrap}
 .filter button{border:1px solid var(--line);padding:13px 20px;background:rgba(255,255,255,.04);backdrop-filter:blur(10px);border-radius:40px;font:600 11px var(--body);letter-spacing:.05em;white-space:nowrap;transition:background .3s,color .3s,border-color .3s}
