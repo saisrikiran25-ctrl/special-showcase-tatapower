@@ -1,99 +1,402 @@
-/* Authored procedural lensing illustration: one GPU surface, continuous intro-to-hero transition. */
-(()=>{
- const canvas=document.getElementById('orbit'),hero=document.querySelector('.hero');
- const motion=matchMedia('(prefers-reduced-motion: reduce)');
- const intro=document.createElement('div');intro.className='singularity-intro';intro.innerHTML='<div class="intro-name">SAI SRIKIRAN J<span>AI APPLICATIONS & AGENTS</span></div><div class="intro-caption">A WORLD OF POSSIBILITIES<span class="intro-line"></span></div><button class="skip-intro">Skip intro ↗</button>';hero.append(intro);
- let skip=motion.matches,visible=true,frame=0,last=0,start=performance.now(),finished=false,revealing=false,orbitTime=0;
+/* ==========================================================================
+   Gargantua — an Interstellar-style black hole, ray-traced in a fragment shader.
 
- const button=intro.querySelector('button');window.scrollTo({top:0,left:0,behavior:'instant'});
- function finish(){if(finished)return;finished=true;clearTimeout(window.introBootTimeout);window.scrollTo({top:0,left:0,behavior:'instant'});document.querySelectorAll('[data-intro-inert]').forEach(el=>{el.inert=false;el.removeAttribute('data-intro-inert')});document.documentElement.classList.remove('singularity-opening','singularity-revealing');intro.classList.add('is-gone');if(document.activeElement===button)document.querySelector('.hero-copy a').focus({preventScroll:true});setTimeout(()=>intro.remove(),1200)}
- button.onclick=()=>{skip=true;finish()};
- const escape=e=>{if(e.key==='Escape'){skip=true;finish()}};document.addEventListener('keydown',escape);
- if(skip){finish()}else{document.documentElement.classList.add('singularity-opening');document.querySelectorAll('header,.hero-copy,.floating').forEach(el=>{el.inert=true;el.setAttribute('data-intro-inert','')})}
- const failSafe=setTimeout(()=>{skip=true;finish()},7200);
- const gl=canvas.getContext('webgl',{alpha:false,antialias:false,powerPreference:'low-power',depth:false,stencil:false});
- if(!gl){canvas.classList.add('blackhole-fallback');finish();clearTimeout(failSafe);return}
- const vs='attribute vec2 position;void main(){gl_Position=vec4(position,0.,1.);}';
- const fs=`
-#ifdef GL_FRAGMENT_PRECISION_HIGH
+   What is simulated (per pixel, per frame):
+   - A camera ray is bent step by step around a Schwarzschild black hole using the
+     photon equation of motion  a = -1.5 * h^2 * p / |p|^5   (rs = 1, photon sphere 1.5,
+     shadow radius ~2.6). Rays that fall inside r < 1 are absorbed -> the black shadow.
+   - A thin accretion disk in the y = 0 plane is sampled every time a bent ray crosses
+     it, so the far side of the disk is lensed up over and under the hole (the iconic
+     halo) and a thin near-side band crosses in front. Higher-order images appear as a
+     thin bright ring hugging the shadow.
+   - Differential (Keplerian) rotation, relativistic Doppler beaming (one side brighter),
+     gravitational redshift, temperature falloff, turbulent noise texture, a faint
+     volumetric haze above and below the disk.
+   - Stars are looked up with the *bent* exit direction, so they stream and smear.
+   One fixed canvas serves the whole page: a camera "director" flies the hole as you
+   scroll (far reveal -> dive -> dim backdrop -> contact close-up), plus a small blurred
+   2D copy for bloom, adaptive resolution, loader orchestration and reduced-motion mode.
+   ========================================================================== */
+(() => {
+  'use strict';
+  const html = document.documentElement;
+  const canvas = document.getElementById('orbit');
+  const bloom = document.getElementById('bloom');
+  const loader = document.querySelector('.loader');
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+  const coarse = matchMedia('(hover: none) and (pointer: coarse)').matches;
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const smoother = t => t * t * t * (t * (t * 6 - 15) + 10);
+
+  function markReady() {
+    clearTimeout(window.bootTimeout);
+    html.classList.remove('loading');
+    html.classList.add('ready');
+  }
+  function hideLoader() {
+    if (!loader) return;
+    loader.classList.add('is-gone');
+    setTimeout(() => loader.remove(), 1400);
+  }
+
+  const gl = canvas.getContext('webgl', {
+    alpha: false, antialias: false, depth: false, stencil: false,
+    powerPreference: 'high-performance', preserveDrawingBuffer: false
+  });
+  if (!gl) {
+    html.classList.add('stage-fallback');
+    hideLoader(); markReady();
+    return;
+  }
+
+  /* ----------------------------------------------------------------------
+     Shader
+     ---------------------------------------------------------------------- */
+  const VERT = 'attribute vec2 position;void main(){gl_Position=vec4(position,0.,1.);}';
+  const FRAG = `
 precision highp float;
-#else
-precision mediump float;
-#endif
- uniform vec2 resolution;uniform float time;uniform float arrival;uniform vec2 pointer;
- float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
- float noise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(hash(i),hash(i+vec2(1.,0.)),f.x),mix(hash(i+vec2(0.,1.)),hash(i+vec2(1.)),f.x),f.y);}
- float fbm(vec2 p){return noise(p)*.55+noise(p*2.03)*.28+noise(p*4.07)*.12+noise(p*8.1)*.05;}
- vec3 plasma(float e){vec3 warm=vec3(.95,.68,.32),sage=vec3(.67,.80,.45);return mix(mix(warm,sage,arrival*.65),vec3(1.,.97,.82),clamp(e*.75,0.,1.));}
- // Material is advected around elliptical orbits; inner bands circle faster.
- float disk(vec2 p,float front){
-  vec2 q=vec2(p.x,p.y/.16);float r=length(q),a=atan(q.y,q.x);
-  float angularSpeed=.48/pow(max(r,.9),1.5);
-  float phase=a-time*angularSpeed;
-  vec2 orbit=vec2(cos(phase),sin(phase));
-  float bands=fbm(orbit*(r*3.5)+vec2(r*9.,r*2.));
-  float filaments=.5+.5*sin(r*104.+bands*7.+sin(phase*5.+r*3.)*1.8);
-  float arms=pow(.5+.5*sin(phase*3.+r*2.2),7.);
-  float wisps=pow(.5+.5*sin(phase*7.-r*4.5),12.);
-  float envelope=smoothstep(.88,1.12,r)*(1.-smoothstep(1.3,3.45,r));
-  float doppler=.58+.42*smoothstep(-2.,2.,p.x);
-  return envelope*(.16+.65*bands+.22*filaments+.38*arms+.12*wisps)*doppler;
- }
+uniform vec2  uRes;
+uniform vec2  uShift;
+uniform float uTime, uDist, uElev, uFocal, uDim, uSteps, uExp, uMotion;
+uniform vec4  uTune; // x disk opacity, y haze, z intensity, w temperature exponent
+#define RIN  3.0
+#define ROUT 15.5
+#define STEPS 132
 
- void main(){
-  vec2 uv=(gl_FragCoord.xy-.5*resolution)/resolution.y;
-  float scale=mix(.22,.255,arrival);vec2 p=(uv-pointer*.006)/scale;
-  float tilt=mix(-.075,-.13,arrival);p=mat2(cos(tilt),-sin(tilt),sin(tilt),cos(tilt))*p;
-  float r=length(p);float a=atan(p.y,p.x);
-  vec3 col=vec3(.009,.013,.014);
-  float haze=exp(-r*.8)*.025;col+=vec3(.45,.57,.30)*haze;
-  // Sparse, stationary star field with a mild radial lens displacement.
-  vec2 warped=uv*(1.+.018/(dot(uv,uv)+.025));vec2 cell=warped*330.;float rnd=hash(floor(cell));
-  float star=smoothstep(.995,1.,rnd)*pow(max(0.,1.-length(fract(cell)-.5)*2.),7.);
-  col+=vec3(.62,.69,.56)*star*.38*smoothstep(1.1,2.5,r);
-  // Far side of the thin disk, seen around the dark event horizon.
-  float rear=disk(p,0.);col+=plasma(rear)*rear*.85;
-  float halo=exp(-abs(r-1.025)*5.)*.12;
-  float ring=exp(-abs(r-1.025)*85.);
-  float lensPhase=a-time*.27;
-  float turbulent=fbm(vec2(cos(lensPhase),sin(lensPhase))*7.+vec2(r*18.,r*3.));
-  float orbitHighlight=pow(.5+.5*cos(lensPhase*3.+r*4.),8.);
-  ring*=.74+.26*orbitHighlight;
-  float arc=exp(-abs(r-1.13)*17.)*(.32+.55*turbulent+.28*orbitHighlight)*smoothstep(-.2,.45,p.y);
-  float lower=exp(-abs(r-1.07)*36.)*(.15+.25*turbulent+.10*orbitHighlight)*(1.-smoothstep(-.7,.1,p.y));
-  col+=plasma(ring+arc)*(halo+ring*.85+arc*.85+lower);
-  // Absorbing center, crisp against the photon ring.
-  col*=smoothstep(.955,1.015,r);
-  // Near-side disk crosses in front of the shadow, as in a strongly lensed edge-on view.
-  vec2 frontP=p;frontP.y+=.025;
-  float nearDisk=disk(frontP,1.)*(1.-smoothstep(-.10,.06,p.y));
-  float equator=exp(-abs(p.y+.028)*105.)*exp(-abs(p.x)*.72)*(.75+.25*noise(vec2(p.x*38.-time*.15,1.)));
-  col+=plasma(nearDisk+equator)*(nearDisk*.85+equator*.9);
-  float horizontalGlow=exp(-abs(p.y)*13.)*exp(-abs(p.x)*.65)*.16;col+=plasma(.4)*horizontalGlow;
-  col=vec3(1.)-exp(-col*mix(1.65,.65,arrival));
-  // Preserve contrast behind the hero's typography.
-  col*=mix(1.,.50,arrival);col*=1.-smoothstep(.25,1.,length(uv))*.55;
+float h21(vec2 p){p=fract(p*vec2(123.34,456.21));p+=dot(p,p+45.32);return fract(p.x*p.y);}
+float h31(vec3 p){p=fract(p*vec3(.1031,.1030,.0973));p+=dot(p,p.yxz+33.33);return fract((p.x+p.y)*p.z);}
+float vn(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);
+  return mix(mix(h21(i),h21(i+vec2(1.,0.)),f.x),mix(h21(i+vec2(0.,1.)),h21(i+vec2(1.,1.)),f.x),f.y);}
+float fbm(vec2 p){float a=.5,s=0.;for(int i=0;i<4;i++){s+=a*vn(p);p=p*2.02+vec2(17.3,9.1);a*=.5;}return s;}
+
+vec3 sky(vec3 d){
+  vec3 c=vec3(0.);
+  for(int k=0;k<3;k++){
+    float sc=70.+float(k)*55.;
+    vec3 q=d*sc; vec3 id=floor(q); vec3 f=fract(q)-.5;
+    float h=h31(id+float(k)*13.7);
+    vec3 off=(vec3(h31(id+1.3),h31(id+2.7),h31(id+4.1))-.5)*.6;
+    float dd=length(f-off);
+    float on=step(.962+.012*float(k),h);
+    float tw=.82+.18*sin(uTime*1.6+h*90.)*uMotion;
+    float s=on*smoothstep(.17,.0,dd)*(.35+1.5*fract(h*91.7))*tw;
+    vec3 tint=mix(vec3(1.,.78,.58),vec3(.78,.88,1.),fract(h*37.));
+    c+=s*tint*(1.-.22*float(k));
+  }
+  float bd=dot(d,normalize(vec3(.35,.78,.52)));
+  float band=exp(-bd*bd*13.);
+  float n=fbm(d.xz*4.2+d.y*3.1);
+  c+=vec3(.55,.30,.15)*band*pow(n,2.3)*.2;
+  return c;
+}
+
+void main(){
+  vec2 uv=(gl_FragCoord.xy-.5*uRes)/uRes.y;
+  float aspect=uRes.x/uRes.y;
+  uv*=max(1.,.74/aspect);
+  uv-=uShift;
+
+  vec3 ro=uDist*vec3(0.,sin(uElev),cos(uElev));
+  vec3 fw=normalize(-ro);
+  vec3 rt=normalize(cross(fw,vec3(0.,1.,0.)));
+  vec3 up=cross(rt,fw);
+  vec3 rd=normalize(fw*uFocal+rt*uv.x+up*uv.y);
+
+  // Bounding sphere: rays that never come near the disk skip the march entirely
+  // (weak-field deflection 2/b), the rest start on the sphere instead of at the camera.
+  const float RB=24.;
+  vec3 hv=cross(ro,rd); float h2=dot(hv,hv);
+  float b=sqrt(h2);
+  float tca=-dot(ro,rd);
+  vec3 p=ro, v=rd;
+  bool far=false;
+  if(dot(ro,ro)>RB*RB){
+    if(tca<0.||b>RB){
+      far=true;
+      if(tca>0.){vec3 perp=ro+rd*tca; v=normalize(rd-normalize(perp)*(2./max(b,1.)));}
+    } else {
+      p=ro+rd*(tca-sqrt(RB*RB-b*b));
+    }
+  }
+  vec3 col=vec3(0.); float trans=1.; float minr=1e9;
+  bool esc=far, cap=false;
+  float rEsc=RB*1.04;
+
+  for(int i=0;i<STEPS;i++){
+    if(far||float(i)>uSteps) break;
+    if(trans<.025) break;
+    float r2=dot(p,p); float r=sqrt(r2);
+    minr=min(minr,r);
+    if(r<1.02){cap=true;break;}
+    if(r>rEsc && dot(p,v)>0.){esc=true;break;}
+    float dt=clamp(.055*(r-.95),.02,1.1);
+    vec3 acc=-1.5*h2*p/(r2*r2*r);
+    vec3 vnx=normalize(v+acc*dt);
+    vec3 pn=p+vnx*dt;
+
+    if(p.y*pn.y<0.){
+      float t=p.y/(p.y-pn.y);
+      vec3 hp=mix(p,pn,t);
+      float rho=length(hp.xz);
+      if(rho>RIN*.97 && rho<ROUT){
+        float T=pow(RIN/rho,.75);
+        float ang=atan(hp.z,hp.x);
+        float ph=ang+4.2*pow(rho,-1.5)*uTime*uMotion;
+        vec2 dom=vec2(cos(ph),sin(ph))*rho;
+        float n1=fbm(dom*.9+rho*.35);
+        float n2=fbm(dom*2.9-vec2(5.,3.));
+        float rings=.5+.5*sin(rho*22.+n1*9.);
+        float tex=clamp(.2+1.0*(.5*n1+.5*n2)*(.72+.28*rings),0.,1.5);
+        float vk=sqrt(.5/rho);
+        vec3 vel=vec3(hp.z,0.,-hp.x)/rho*vk;
+        float gam=inversesqrt(1.-vk*vk);
+        float D=1./(gam*(1.+dot(vel,vnx)));
+        float g=sqrt(max(1.-1./rho,.02));
+        float sh=D*g;
+        float env=smoothstep(RIN*.97,RIN*1.16,rho)*(1.-smoothstep(ROUT*.6,ROUT,rho));
+        float I=pow(T,uTune.w)*pow(sh,3.1)*tex*uTune.z*env;
+        float temp=T*sh;
+        vec3 hot=mix(vec3(.95,.36,.07),vec3(1.,.84,.58),smoothstep(.22,.82,temp));
+        hot=mix(hot,vec3(1.,.97,.9),smoothstep(.85,1.3,temp));
+        col+=trans*hot*I;
+        trans*=1.-clamp(env*(.2+.6*tex)*uTune.x,0.,.82);
+      }
+    }
+    float rr=length(pn.xz);
+    float hz=exp(-abs(pn.y)*(2.3+.35*rr))*smoothstep(RIN*.85,RIN*1.3,rr)*(1.-smoothstep(ROUT*.55,ROUT,rr));
+    col+=trans*vec3(1.,.5,.2)*hz*pow(RIN/max(rr,.5),2.2)*dt*uTune.y;
+
+    p=pn; v=vnx;
+  }
+
+  if(esc) col+=trans*sky(v);
+  if(!cap&&!far) col+=vec3(1.,.66,.36)*exp(-pow((minr-1.53)*5.2,2.))*.2*trans;
+
+  col*=uExp;
+  col=1.-exp(-col*1.12);
+  col=pow(col,vec3(.93));
+  col*=uDim;
+  col+=(h21(gl_FragCoord.xy)-.5)*.004*uDim; // static 1-LSB dither against banding, no animated grain
   gl_FragColor=vec4(col,1.);
- }`;
- function shader(type,src){const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))throw Error(gl.getShaderInfoLog(s));return s}
- let program;
- try{program=gl.createProgram();gl.attachShader(program,shader(gl.VERTEX_SHADER,vs));gl.attachShader(program,shader(gl.FRAGMENT_SHADER,fs));gl.linkProgram(program);if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw Error('Shader link failed');gl.useProgram(program)}catch(e){console.warn('Black hole fallback:',e.message);canvas.classList.add('blackhole-fallback');finish();clearTimeout(failSafe);return}
- const b=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,b);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,-1,1,1,-1,1,1]),gl.STATIC_DRAW);const pos=gl.getAttribLocation(program,'position');gl.enableVertexAttribArray(pos);gl.vertexAttribPointer(pos,2,gl.FLOAT,false,0,0);
- const uniforms=Object.fromEntries(['resolution','time','arrival','pointer'].map(k=>[k,gl.getUniformLocation(program,k)]));
- let px=0,py=0,tx=0,ty=0;
- hero.addEventListener('pointermove',e=>{if(e.pointerType!=='touch'&&!motion.matches){tx=e.clientX/innerWidth-.5;ty=.5-e.clientY/innerHeight}});hero.addEventListener('pointerleave',()=>{tx=ty=0});
- function resize(){const ratio=Math.min(devicePixelRatio,1.25,1440/hero.clientWidth);canvas.width=Math.round(hero.clientWidth*ratio);canvas.height=Math.round(hero.clientHeight*ratio);gl.viewport(0,0,canvas.width,canvas.height)}resize();new ResizeObserver(()=>{resize();resume()}).observe(hero);addEventListener('resize',()=>{resize();resume()});
- function draw(now){frame=0;if(!visible||document.hidden)return;const dt=last?Math.min((now-last)/1000,.05):.016;last=now;if(!motion.matches)orbitTime+=dt;
-  const elapsed=(now-start)/1000;let t=skip||motion.matches?1:Math.max(0,Math.min(1,(elapsed-1.8)/3.6));const eased=t*t*t*(t*(t*6-15)+10);
-  const damping=1-Math.exp(-3*dt);px+=(tx-px)*damping;py+=(ty-py)*damping;
-  if(elapsed>=2.7&&!revealing&&!finished){revealing=true;document.documentElement.classList.add('singularity-revealing');intro.classList.add('is-gone')}
-  gl.uniform2f(uniforms.resolution,canvas.width,canvas.height);gl.uniform1f(uniforms.time,motion.matches?0:orbitTime);gl.uniform1f(uniforms.arrival,eased);gl.uniform2f(uniforms.pointer,px,py);gl.drawArrays(gl.TRIANGLES,0,6);
-  hero.style.setProperty('--arrival',eased);if(t>=1){finish();clearTimeout(failSafe)}
-  if(!motion.matches)frame=requestAnimationFrame(draw);
- }
- function resume(){cancelAnimationFrame(frame);frame=requestAnimationFrame(draw)}
- new IntersectionObserver(es=>{visible=es[0].isIntersecting;if(visible)resume();else cancelAnimationFrame(frame)}).observe(hero);
- document.addEventListener('visibilitychange',()=>{if(document.hidden)cancelAnimationFrame(frame);else resume()});
- motion.addEventListener('change',()=>{if(motion.matches){skip=true;finish()}resume()});canvas.addEventListener('webglcontextlost',e=>{e.preventDefault();cancelAnimationFrame(frame);finish();canvas.classList.add('blackhole-fallback')});
- resume();
+}`;
+
+  function compile(type, src) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+    return s;
+  }
+  let program;
+  try {
+    program = gl.createProgram();
+    gl.attachShader(program, compile(gl.VERTEX_SHADER, VERT));
+    gl.attachShader(program, compile(gl.FRAGMENT_SHADER, FRAG));
+    gl.linkProgram(program);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error('link failed');
+    gl.useProgram(program);
+  } catch (e) {
+    console.warn('Black hole shader unavailable:', e.message);
+    html.classList.add('stage-fallback');
+    hideLoader(); markReady();
+    return;
+  }
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]), gl.STATIC_DRAW);
+  const loc = gl.getAttribLocation(program, 'position');
+  gl.enableVertexAttribArray(loc);
+  gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+  const U = {};
+  ['uRes', 'uShift', 'uTime', 'uDist', 'uElev', 'uFocal', 'uDim', 'uSteps', 'uExp', 'uMotion', 'uTune']
+    .forEach(k => U[k] = gl.getUniformLocation(program, k));
+
+  /* ----------------------------------------------------------------------
+     Resolution: adaptive, so weaker GPUs stay smooth
+     ---------------------------------------------------------------------- */
+  const maxScale = coarse ? .75 : 1.1;
+  const minScale = coarse ? .45 : .62;
+  let scale = coarse ? .6 : .9;
+  const forced = parseFloat(new URLSearchParams(location.search).get('scale')); // ?scale=0.9 pins render resolution
+  if (forced > 0) scale = clamp(forced, .1, 1.5);
+  const bctx = bloom.getContext('2d');
+  function resize() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+    canvas.width = Math.max(2, Math.round(innerWidth * dpr * scale));
+    canvas.height = Math.max(2, Math.round(innerHeight * dpr * scale));
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    bloom.width = Math.max(2, Math.ceil(innerWidth / 9));
+    bloom.height = Math.max(2, Math.ceil(innerHeight / 9));
+    measure();
+    requestRedraw();
+  }
+
+  /* ----------------------------------------------------------------------
+     Camera director: keyframes tied to page sections, interpolated by scroll
+     (dist: camera distance in Schwarzschild radii, elev: radians above the disk plane,
+      sx/sy: screen offset of the hole, dim: brightness, focal: field of view)
+     ---------------------------------------------------------------------- */
+  const KF = [
+    { sel: '#home',    at: 0,   vh: 0,  v: { dist: 38, elev: .05, sx: 0,   sy: .07, dim: 1,   focal: 2.2 } },
+    { sel: '#home',    at: .5,  vh: 0,  v: { dist: 23, elev: .085,sx: 0,   sy: .06, dim: 1,   focal: 2.2 } },
+    { sel: '#home',    at: 1,   vh: -1, v: { dist: 12, elev: .16, sx: 0,   sy: .03, dim: .95, focal: 2.2 } },
+    { sel: '#work',    at: .01, vh: 0,  v: { dist: 50, elev: .06, sx: .48, sy: .08, dim: .44, focal: 2.2 } },
+    { sel: '#about',   at: 0,   vh: 0,  v: { dist: 62, elev: .07, sx: -.5, sy: .04, dim: .38, focal: 2.2 } },
+    { sel: '#stats',   at: .5,  vh: 0,  v: { dist: 34, elev: .11, sx: 0,   sy: .02, dim: .75, focal: 2.2 } },
+    { sel: '.source',  at: 0,   vh: 0,  v: { dist: 46, elev: .08, sx: .45, sy: .05, dim: .42, focal: 2.2 } },
+    { sel: '#contact', at: 0,   vh: 0,  v: { dist: 22, elev: .09, sx: 0,   sy: .09, dim: .7, focal: 2.2 } },
+    { sel: '#contact', at: 1,   vh: -1, v: { dist: 12, elev: .12, sx: 0,   sy: .09, dim: .92, focal: 2.2 } }
+  ];
+  let keys = [];
+  function measure() {
+    keys = KF.map(k => {
+      const el = document.querySelector(k.sel);
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { y: r.top + scrollY + r.height * k.at + k.vh * innerHeight, v: k.v };
+    }).filter(Boolean).sort((a, b) => a.y - b.y);
+  }
+  function sample(y) {
+    if (!keys.length) return KF[0].v;
+    if (y <= keys[0].y) return keys[0].v;
+    const last = keys[keys.length - 1];
+    if (y >= last.y) return last.v;
+    for (let i = 0; i < keys.length - 1; i++) {
+      const a = keys[i], b = keys[i + 1];
+      if (y >= a.y && y <= b.y) {
+        const t = smoother(clamp((y - a.y) / Math.max(1, b.y - a.y), 0, 1));
+        const o = {};
+        for (const k in a.v) o[k] = k === 'dist' ? Math.exp(lerp(Math.log(a.v[k]), Math.log(b.v[k]), t)) : lerp(a.v[k], b.v[k], t);
+        return o;
+      }
+    }
+    return last.v;
+  }
+
+  /* ----------------------------------------------------------------------
+     Loader + arrival
+     ---------------------------------------------------------------------- */
+  const ringFg = loader && loader.querySelector('.ring-fg');
+  const countEl = loader && loader.querySelector('.loader-count');
+  const startT = performance.now();
+  let loaded = !!reduced.matches || !loader;
+  let shown = 0, dismissed = false, arriveT0 = 0, arriveDur = 4400;
+  let real = 0;
+  const tasks = { fonts: 0, imgs: 0, frames: 0 };
+  const imgs = Array.from(document.querySelectorAll('.float img'));
+  function updateReal() { real = (tasks.fonts + tasks.imgs + Math.min(tasks.frames, 3) / 3) / 3; }
+  if (!loaded) {
+    (document.fonts && document.fonts.ready ? Promise.race([document.fonts.ready, new Promise(r => setTimeout(r, 2500))]) : Promise.resolve())
+      .then(() => { tasks.fonts = 1; updateReal(); });
+    let n = 0;
+    const one = () => { n++; tasks.imgs = n / Math.max(1, imgs.length); updateReal(); };
+    if (!imgs.length) tasks.imgs = 1;
+    imgs.forEach(im => (im.complete ? Promise.resolve() : new Promise(r => { im.addEventListener('load', r, { once: true }); im.addEventListener('error', r, { once: true }); setTimeout(r, 4000); })).then(one));
+  }
+  function dismiss(fast) {
+    if (dismissed) return;
+    dismissed = true;
+    arriveDur = fast ? 1500 : 4400;
+    arriveT0 = performance.now();
+    hideLoader();
+    html.classList.remove('loading');
+    setTimeout(markReady, fast ? 200 : 650);
+  }
+  if (loader) {
+    loader.querySelector('.skip-intro').addEventListener('click', () => dismiss(true));
+    addEventListener('keydown', e => { if (e.key === 'Escape') dismiss(true); });
+  }
+  if (reduced.matches) { dismissed = true; arriveT0 = -1e9; hideLoader(); markReady(); }
+
+  /* ----------------------------------------------------------------------
+     Render loop
+     ---------------------------------------------------------------------- */
+  const TUNE = [.5, .012, 3.8, 1.9];
+  const cur = { dist: 38, elev: .05, sx: 0, sy: .07, dim: 0, focal: 2.2 };
+  let mx = 0, my = 0, smx = 0, smy = 0;
+  let last = 0, time = 0, raf = 0, frames = 0, acc = 0, accN = 0, firstCamera = true;
+  addEventListener('pointermove', e => {
+    if (e.pointerType === 'touch' || reduced.matches) return;
+    mx = e.clientX / innerWidth - .5; my = e.clientY / innerHeight - .5;
+  }, { passive: true });
+
+  function draw(now, dt) {
+    const arrive = dismissed ? clamp((now - arriveT0) / arriveDur, 0, 1) : 0;
+    const ea = smoother(arrive);
+    const target = sample(scrollY);
+    const k = firstCamera ? 1 : 1 - Math.exp(-dt * 3.4);
+    firstCamera = false;
+    for (const key in target) cur[key] = lerp(cur[key], target[key], key === 'dim' ? Math.min(1, k * 1.4) : k);
+    smx += (mx - smx) * (1 - Math.exp(-dt * 4)); smy += (my - smy) * (1 - Math.exp(-dt * 4));
+
+    const aspect = innerWidth / innerHeight;
+    const sxScale = clamp(aspect / 1.6, .25, 1);
+    const dist = cur.dist * (.24 + .76 * ea);
+    const elev = cur.elev + smy * -.05 + Math.sin(time * .11) * .008;
+    const fadeIn = dismissed ? clamp((now - arriveT0) / 1300, 0, 1) : 0;
+    const dim = cur.dim * (.25 + .75 * ea) * fadeIn;
+
+    gl.uniform2f(U.uRes, canvas.width, canvas.height);
+    gl.uniform2f(U.uShift, (cur.sx * sxScale) + smx * .018, cur.sy - smy * .018);
+    gl.uniform1f(U.uTime, time);
+    gl.uniform1f(U.uDist, dist);
+    gl.uniform1f(U.uElev, elev);
+    gl.uniform1f(U.uFocal, cur.focal);
+    gl.uniform1f(U.uDim, dim);
+    gl.uniform1f(U.uSteps, coarse ? 90 : 118);
+    gl.uniform1f(U.uExp, .55 + .45 * ea);
+    gl.uniform1f(U.uMotion, reduced.matches ? 0 : 1);
+    const tu = window.__bhTune || TUNE; gl.uniform4f(U.uTune, tu[0], tu[1], tu[2], tu[3]);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    if ((frames & 1) === 0) { try { bctx.drawImage(canvas, 0, 0, bloom.width, bloom.height); } catch (e) {} }
+    frames++;
+    tasks.frames = frames; updateReal();
+  }
+
+  function loaderTick(now) {
+    if (dismissed || !loaded && !loader) return;
+    const elapsed = (now - startT) / 1000;
+    const target = Math.min(real, elapsed / 1.7);
+    shown += (target - shown) * .12;
+    if (ringFg) loader.style.setProperty('--load', shown.toFixed(3));
+    if (countEl) countEl.textContent = Math.round(shown * 100);
+    if (shown > .985 && real >= .999 && elapsed > 1.7) dismiss(false);
+    if (elapsed > 7.5) dismiss(true);
+  }
+
+  function loop(now) {
+    raf = requestAnimationFrame(loop);
+    const dt = last ? Math.min((now - last) / 1000, .1) : .016;
+    last = now;
+    if (!reduced.matches) time += dt;
+    loaderTick(now);
+    draw(now, dt);
+
+    // adaptive resolution
+    acc += dt; accN++;
+    if (accN >= 40 && !(forced > 0)) {
+      const ms = (acc / accN) * 1000; acc = 0; accN = 0;
+      if (ms > 34 && scale > minScale) { scale = Math.max(minScale, scale * .9); resize(); }
+      else if (ms < 17 && scale < maxScale) { scale = Math.min(maxScale, scale * 1.06); resize(); }
+    }
+  }
+
+  let redrawQueued = false;
+  function requestRedraw() {
+    if (!reduced.matches || redrawQueued) return;
+    redrawQueued = true;
+    requestAnimationFrame(t => { redrawQueued = false; draw(t, .016); });
+  }
+
+  addEventListener('resize', resize);
+  addEventListener('scroll', requestRedraw, { passive: true });
+  new ResizeObserver(() => measure()).observe(document.body);
+  window.addEventListener('load', measure);
+  canvas.addEventListener('webglcontextlost', e => { e.preventDefault(); cancelAnimationFrame(raf); html.classList.add('stage-fallback'); });
+  document.addEventListener('visibilitychange', () => { last = 0; });
+  reduced.addEventListener('change', () => location.reload());
+
+  resize();
+  if (reduced.matches) draw(performance.now(), .016);
+  else raf = requestAnimationFrame(loop);
 })();
