@@ -195,7 +195,9 @@ html.live .hero-bottom{transition:none}
 /* ---------- Stats: helix ---------- */
 .ss3d{position:relative}
 .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;padding:60px var(--pad) 90px}
-.stat{padding:34px 28px;border:1px solid var(--line);border-radius:28px;background:rgba(9,9,11,.78);backdrop-filter:blur(22px);display:flex;flex-direction:column;gap:12px;justify-content:space-between;min-height:260px}
+.stat{padding:38px 30px;border:1px solid var(--line);border-radius:28px;background:rgba(9,9,11,.78);backdrop-filter:blur(22px);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;min-height:300px}
+.stat span{margin-top:clamp(18px,2.2vw,30px)}
+.stat small{display:block;margin-top:clamp(16px,1.8vw,24px);padding-top:clamp(16px,1.8vw,22px);border-top:1px solid var(--line);max-width:26ch;font:500 12.5px/1.65 var(--body);color:#9d978b;letter-spacing:0;text-transform:none}
 .stat strong{font:700 clamp(58px,7vw,118px)/.9 var(--display);letter-spacing:-.06em;background:linear-gradient(180deg,#fff 10%,var(--amber) 90%);-webkit-background-clip:text;background-clip:text;color:transparent}
 .stat span{font:600 12px var(--body);letter-spacing:.14em;text-transform:uppercase;color:#bdb6a8;line-height:1.5}
 .ss3d.has-3d .ss3d-scrollspace{height:430vh;position:relative}
