@@ -65,6 +65,23 @@
       });
     };
     wrap(h1);
+
+    // Make sure the widest word always fits the column, whatever the font or phone width.
+    function fit() {
+      h1.style.fontSize = '';
+      let size = parseFloat(getComputedStyle(h1).fontSize);
+      const max = h1.clientWidth;
+      for (let i = 0; i < 14 && size > 22; i++) {
+        const widest = Math.max(...$$('.wi', h1).map(w => w.getBoundingClientRect().width));
+        if (widest <= max - 2) break;
+        size *= Math.max(.8, (max - 2) / widest);
+        h1.style.fontSize = size.toFixed(2) + 'px';
+      }
+    }
+    fit();
+    addEventListener('resize', fit);
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
+    addEventListener('load', fit);
   })();
 
   /* ---------------- Wordmark wipe loop (reveal left->right, erase right->left) ---------------- */
@@ -241,7 +258,16 @@
     const space = $('.ss3d-scrollspace');
     const cardsEl = $$('.ss3d-card');
     let on = false, cur = 0, tgt = 0, sc = 1;
-    if (!reduced && section && cardsEl.length) { section.classList.add('has-3d'); on = true; }
+    // phones get a plain, readable stack instead of the 3D helix
+    const narrow = matchMedia('(max-width:700px)');
+    function setMode() {
+      on = !reduced && !narrow.matches && !!section && cardsEl.length > 0;
+      section.classList.toggle('has-3d', on);
+      if (!on) cardsEl.forEach(c => { c.style.transform = ''; c.style.opacity = ''; c.style.pointerEvents = ''; });
+      else render(cur);
+    }
+    narrow.addEventListener('change', () => setMode());
+    addEventListener('resize', () => { if (on === narrow.matches) setMode(); });
     function metrics() { sc = clamp(innerWidth / 1440, .5, 1.1); }
     metrics(); addEventListener('resize', metrics);
     function progress() {
@@ -272,7 +298,7 @@
       cur = lerp(cur, tgt, .1);
       render(cur);
     }
-    if (on) render(0);
+    setMode();
     return { update };
   })();
 

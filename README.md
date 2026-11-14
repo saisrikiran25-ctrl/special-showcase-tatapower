@@ -21,6 +21,7 @@ Debug helpers: `?scale=0.8` pins the black hole's render resolution (otherwise i
 - `dist/app.js`: hero tilt and scroll journey, letter-by-letter reveal, stacking cards, helix carousel, marquees, project dialog, filters, menu.
 - `dist/blackhole.js`: the WebGL black hole (geodesic ray tracing in a fragment shader), the scroll-driven camera director, bloom, adaptive resolution and the loader.
 - `dist/assets/`: original demonstration videos, landing-page thumbnails, and project data.
+- `tests/layout-check.js`: in-page layout and content checks (overflow, clipped text, headline fit, canvas shape, nine projects, four highlight cards, key links). Paste it into the browser console on the running site at any viewport size; it returns `{ passed, failures }`. Last run: 0 failures at 320, 390, 430, 805 and 1231px wide.
 - `site-analysis/REPLICATION_SPEC.md`: analysis of the two reference sites this design draws from.
 - `.openai/hosting.json`: existing Sites project and static hosting configuration.
 - `.claude/launch.json`: preview-server entry for local development.

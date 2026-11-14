@@ -21,7 +21,7 @@ a{color:inherit;text-decoration:none}
 button{font:inherit;color:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
 a,button{-webkit-tap-highlight-color:transparent}
 a:focus-visible,button:focus-visible{outline:2px solid var(--amber);outline-offset:5px}
-h1,h2,h3{font-family:var(--display);font-weight:600;margin:0;letter-spacing:-.045em;line-height:1}
+h1,h2,h3{overflow-wrap:break-word;font-family:var(--display);font-weight:600;margin:0;letter-spacing:-.045em;line-height:1}
 em{font-family:var(--serif);font-style:italic;font-weight:400;color:var(--amber);letter-spacing:-.01em}
 /* counts are small glowing badges (same language as a cart bubble), not superscripts */
 .count{display:inline-grid;place-items:center;min-width:2.1em;height:2.1em;padding:0 .55em;margin-left:.7em;border-radius:99px;background:rgba(255,179,107,.12);border:1px solid rgba(255,179,107,.5);box-shadow:0 0 14px rgba(255,179,107,.18);color:var(--amber);font:700 9px/1 var(--body);letter-spacing:.06em;font-variant-numeric:tabular-nums;vertical-align:middle;text-shadow:none}
@@ -33,7 +33,7 @@ em{font-family:var(--serif);font-style:italic;font-weight:400;color:var(--amber)
 ::selection{background:var(--amber);color:#000}
 
 /* ---------- Fixed stage: black hole + bloom + vignette ---------- */
-#orbit,#bloom,.vignette{position:fixed;inset:0;width:100%;height:100%;pointer-events:none}
+#orbit,#bloom,.vignette{position:fixed;top:0;left:0;width:100%;height:100vh;height:100lvh;pointer-events:none}
 #orbit{z-index:0;background:#000}
 #bloom{z-index:1;mix-blend-mode:screen;filter:blur(22px) saturate(1.2);opacity:.5}
 .vignette{z-index:1;background:radial-gradient(ellipse at 50% 50%,transparent 45%,rgba(0,0,0,.55) 100%)}
@@ -108,6 +108,7 @@ html.ready .float{opacity:var(--fade,1)}
 .hero-copy h1{grid-area:h1;font-size:clamp(54px,8.6vw,150px);line-height:.9;letter-spacing:-.05em;text-shadow:0 6px 60px rgba(0,0,0,.9)}
 .hero-copy>p{grid-area:side;align-self:end;color:#cfc8ba;font:500 clamp(14px,1.3vw,18px) var(--body);margin:0 0 18px;text-align:right}
 .hero-copy>a.pill{grid-area:pill;justify-self:end;margin-bottom:12px}
+html.live .w{overflow:visible}
 .w{display:inline-block;overflow:hidden;vertical-align:top;padding:.04em .02em .14em;margin:-.04em -.02em -.14em}
 .wi{display:inline-block;transform:translateY(112%);transition:transform 1.25s var(--ease) var(--d,0s)}
 html.ready .wi{transform:none}
@@ -220,7 +221,7 @@ html.live .hero-bottom{transition:none}
 footer{position:relative;min-height:100svh;padding:140px var(--pad) 46px;display:flex;flex-direction:column;justify-content:flex-end;background:linear-gradient(180deg,transparent,rgba(0,0,0,.5) 70%)}
 footer .eyebrow{display:block;color:var(--fg);margin-bottom:18px;text-shadow:0 2px 20px #000}
 .source .eyebrow,.about .eyebrow,.section-head .eyebrow{color:#b9b2a5;text-shadow:0 2px 18px #000}
-footer h2{font-size:clamp(70px,15vw,260px);line-height:.84;letter-spacing:-.065em;margin:10px 0 56px}
+footer h2{font-size:clamp(52px,15vw,260px);line-height:.84;letter-spacing:-.065em;margin:10px 0 56px}
 .email{align-self:flex-start;font:600 clamp(15px,2.8vw,40px) var(--display);letter-spacing:-.03em;border-bottom:1px solid rgba(255,255,255,.4);padding-bottom:10px;overflow-wrap:anywhere;transition:color .3s,border-color .3s}
 .email:hover{color:var(--amber);border-color:var(--amber)}
 .footer-row{display:flex;justify-content:space-between;gap:22px;flex-wrap:wrap;margin-top:90px;padding-top:26px;border-top:1px solid var(--line);color:#b7b0a3;font-size:12px}
@@ -261,8 +262,9 @@ dialog[open]{animation:dlg .5s var(--ease)}
   .f2{left:4%;top:31%;width:27vw}
   .f3{right:4%;top:31%;width:29vw}
   .hero-copy{bottom:64px}
-  .hero-copy h1{font-size:clamp(46px,15vw,84px)}
+  .hero-copy h1{font-size:clamp(32px,11.2vw,84px)}
   .hero-bottom{font-size:7.5px;bottom:22px}
+  .hero-copy>a.pill{margin-top:20px}
   .hero-caption{bottom:30%}
   .project{padding:18px 16px 26px;border-radius:24px}
   .work{padding-top:80px}
@@ -272,6 +274,22 @@ dialog[open]{animation:dlg .5s var(--ease)}
   .loader-name{font-size:11px}
   .wm-name{font-size:12px}
   .stat{padding:22px 18px}
+}
+@media (max-width:540px){
+  .stats{grid-template-columns:1fr;padding:40px var(--pad) 60px}
+  .stat{min-height:0;padding:30px 24px}
+  .filter button{padding:11px 16px}
+  .work{padding-left:5.5%;padding-right:5.5%}
+  .section-head h2{font-size:clamp(46px,15vw,84px)}
+  .about h2{font-size:clamp(44px,14vw,80px)}
+  .project h3{font-size:clamp(30px,9.4vw,46px)}
+  .project-copy>p{font-size:14px}
+  .edge-track{font-size:clamp(84px,26vw,140px)}
+  .source-link{font-size:clamp(26px,8vw,44px)}
+  .email{font-size:clamp(14px,4.4vw,22px)}
+  .footer-row{gap:14px 22px;margin-top:56px}
+  .skip-intro{right:5%;bottom:5%}
+  .loader-caption{bottom:18%;letter-spacing:.3em}
 }
 @media (max-height:640px) and (min-width:701px){
   .hero-copy h1{font-size:clamp(48px,7vw,100px)}

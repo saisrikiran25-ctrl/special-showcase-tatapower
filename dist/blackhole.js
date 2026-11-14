@@ -94,7 +94,7 @@ vec3 sky(vec3 d){
 void main(){
   vec2 uv=(gl_FragCoord.xy-.5*uRes)/uRes.y;
   float aspect=uRes.x/uRes.y;
-  uv*=max(1.,.74/aspect);
+  uv*=max(1.,.95/aspect);
   uv-=uShift;
 
   vec3 ro=uDist*vec3(0.,sin(uElev),cos(uElev));
@@ -130,7 +130,7 @@ void main(){
     minr=min(minr,r);
     if(r<1.02){cap=true;break;}
     if(r>rEsc && dot(p,v)>0.){esc=true;break;}
-    float dt=clamp(.055*(r-.95),.02,1.1);
+    float dt=clamp(.055*(r-.95),.035,1.1);
     vec3 acc=-1.5*h2*p/(r2*r2*r);
     vec3 vnx=normalize(v+acc*dt);
     vec3 pn=p+vnx*dt;
@@ -170,8 +170,9 @@ void main(){
     p=pn; v=vnx;
   }
 
+  if(!esc&&!cap&&trans>.025) cap=true; // ran out of steps deep in the well: absorbed
   if(esc) col+=trans*sky(v);
-  if(!cap&&!far) col+=vec3(1.,.66,.36)*exp(-pow((minr-1.53)*5.2,2.))*.2*trans;
+  if(esc&&!far) col+=vec3(1.,.66,.36)*exp(-pow((minr-1.53)*5.2,2.))*.2*trans;
 
   col*=uExp;
   col=1.-exp(-col*1.12);
@@ -220,13 +221,18 @@ void main(){
   const forced = parseFloat(new URLSearchParams(location.search).get('scale')); // ?scale=0.9 pins render resolution
   if (forced > 0) scale = clamp(forced, .1, 1.5);
   const bctx = bloom.getContext('2d');
+  // The stage is sized with 100lvh in CSS, so the phone's collapsing address bar never changes it.
+  const VW = () => canvas.clientWidth || innerWidth;
+  const VH = () => canvas.clientHeight || innerHeight;
+  let lastW = 0, lastH = 0;
   function resize() {
+    lastW = VW(); lastH = VH();
     const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
-    canvas.width = Math.max(2, Math.round(innerWidth * dpr * scale));
-    canvas.height = Math.max(2, Math.round(innerHeight * dpr * scale));
+    canvas.width = Math.max(2, Math.round(VW() * dpr * scale));
+    canvas.height = Math.max(2, Math.round(VH() * dpr * scale));
     gl.viewport(0, 0, canvas.width, canvas.height);
-    bloom.width = Math.max(2, Math.ceil(innerWidth / 9));
-    bloom.height = Math.max(2, Math.ceil(innerHeight / 9));
+    bloom.width = Math.max(2, Math.ceil(VW() / 9));
+    bloom.height = Math.max(2, Math.ceil(VH() / 9));
     measure();
     requestRedraw();
   }
@@ -329,7 +335,7 @@ void main(){
     for (const key in target) cur[key] = lerp(cur[key], target[key], key === 'dim' ? Math.min(1, k * 1.4) : k);
     smx += (mx - smx) * (1 - Math.exp(-dt * 4)); smy += (my - smy) * (1 - Math.exp(-dt * 4));
 
-    const aspect = innerWidth / innerHeight;
+    const aspect = canvas.width / canvas.height;
     const sxScale = clamp(aspect / 1.6, .25, 1);
     const dist = cur.dist * (.24 + .76 * ea);
     const elev = cur.elev + smy * -.05 + Math.sin(time * .11) * .008;
@@ -343,7 +349,7 @@ void main(){
     gl.uniform1f(U.uElev, elev);
     gl.uniform1f(U.uFocal, cur.focal);
     gl.uniform1f(U.uDim, dim);
-    gl.uniform1f(U.uSteps, coarse ? 90 : 118);
+    gl.uniform1f(U.uSteps, coarse ? 104 : 118);
     gl.uniform1f(U.uExp, .55 + .45 * ea);
     gl.uniform1f(U.uMotion, reduced.matches ? 0 : 1);
     const tu = window.__bhTune || TUNE; gl.uniform4f(U.uTune, tu[0], tu[1], tu[2], tu[3]);
@@ -388,7 +394,7 @@ void main(){
     requestAnimationFrame(t => { redrawQueued = false; draw(t, .016); });
   }
 
-  addEventListener('resize', resize);
+  addEventListener('resize', () => { if (VW() === lastW && VH() === lastH) measure(); else resize(); });
   addEventListener('scroll', requestRedraw, { passive: true });
   new ResizeObserver(() => measure()).observe(document.body);
   window.addEventListener('load', measure);
