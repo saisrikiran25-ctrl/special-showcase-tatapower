@@ -295,6 +295,7 @@
       const r = section.getBoundingClientRect();
       if (r.bottom < -vh * .2 || r.top > vh * 1.2) return;
       tgt = progress();
+      if (Math.abs(tgt - cur) < .0004) return;   // settled: no DOM writes
       cur = lerp(cur, tgt, .1);
       render(cur);
     }
@@ -318,12 +319,20 @@
   stack.measure();
   addEventListener('resize', () => { readCards(); stack.measure(); });
   addEventListener('load', () => { readCards(); stack.measure(); });
-  let lastSY = -1;
+  let lastSY = -1, dirty = true;
+  addEventListener('resize', () => { dirty = true; });
   function tick() {
     requestAnimationFrame(tick);
     const sy = scrollY, vh = innerHeight;
-    if (!reduced) { updateHero(sy, vh); helix.update(vh); }
-    if (sy !== lastSY || !reduced) { stack.update(vh); updateReveals(vh); updateProgress(sy, vh); }
+    // Only touch the DOM when something actually changed (scroll, pointer tilt still settling, resize).
+    const scrolled = sy !== lastSY || dirty;
+    dirty = false;
+    if (!reduced) {
+      const tiltMoving = Math.abs(tilt.tx - tilt.x) > .02 || Math.abs(tilt.ty - tilt.y) > .02 || Math.abs(tilt.trx - tilt.rx) > .01 || Math.abs(tilt.try_ - tilt.ry) > .01;
+      if (scrolled || tiltMoving) updateHero(sy, vh);
+      helix.update(vh);
+    }
+    if (scrolled) { stack.update(vh); updateReveals(vh); updateProgress(sy, vh); }
     lastSY = sy;
   }
   if (reduced) {
