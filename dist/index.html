@@ -11,14 +11,15 @@ history.scrollRestoration='manual';
 if(!matchMedia('(prefers-reduced-motion: reduce)').matches)document.documentElement.classList.add('loading');
 window.scrollTo(0,0);
 addEventListener('pageshow',function(e){if(e.persisted)location.reload()});
-window.bootTimeout=setTimeout(function(){document.documentElement.classList.remove('loading');document.documentElement.classList.add('ready')},9000);
+/* last-resort safety net only (the loader dismisses itself by ~8s): never let content show behind a live loader */
+window.bootTimeout=setTimeout(function(){var l=document.querySelector('.loader');if(l)l.classList.add('is-gone');document.documentElement.classList.remove('loading');document.documentElement.classList.add('ready')},16000);
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://api.fontshare.com">
 <link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=clash-display@500,600,700&display=swap">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Manrope:wght@400;500;600;700&family=Syne:wght@600;700;800&display=swap">
-<link rel="stylesheet" href="style.css?v=20261114c">
+<link rel="stylesheet" href="style.css?v=20261118c">
 </head>
 <body>
 <div class="progress"></div>
@@ -82,7 +83,7 @@ window.bootTimeout=setTimeout(function(){document.documentElement.classList.remo
 </main>
 
 <dialog id="detail"><button class="close" aria-label="Close project details">Close ×</button><div class="dialog-content"></div></dialog>
-<script src="app.js?v=20261114c" defer></script>
-<script src="blackhole.js?v=20261114c" defer></script>
+<script src="app.js?v=20261118c" defer></script>
+<script src="blackhole.js?v=20261118c" defer></script>
 </body>
 </html>

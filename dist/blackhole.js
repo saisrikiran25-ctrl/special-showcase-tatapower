@@ -79,7 +79,7 @@ vec3 sky(vec3 d){
     vec3 off=(vec3(h31(id+1.3),h31(id+2.7),h31(id+4.1))-.5)*.6;
     float dd=length(f-off);
     float on=step(.962+.012*float(k),h);
-    float tw=.82+.18*sin(uTime*1.6+h*90.)*uMotion;
+    float tw=.94+.06*sin(uTime*1.3+h*90.)*uMotion;
     float s=on*smoothstep(.17,.0,dd)*(.35+1.5*fract(h*91.7))*tw;
     vec3 tint=mix(vec3(1.,.78,.58),vec3(.78,.88,1.),fract(h*37.));
     c+=s*tint*(1.-.22*float(k));
@@ -145,8 +145,8 @@ void main(){
         float ph=ang+4.2*pow(rho,-1.5)*uTime*uMotion;
         vec2 dom=vec2(cos(ph),sin(ph))*rho;
         float n1=fbm(dom*.9+rho*.35);
-        float n2=fbm(dom*2.9-vec2(5.,3.));
-        float rings=.5+.5*sin(rho*22.+n1*9.);
+        float n2=fbm(dom*2.1-vec2(5.,3.));
+        float rings=.5+.5*sin(rho*16.+n1*7.);
         float tex=clamp(.2+1.0*(.5*n1+.5*n2)*(.72+.28*rings),0.,1.5);
         float vk=sqrt(.5/rho);
         vec3 vel=vec3(hp.z,0.,-hp.x)/rho*vk;
@@ -215,24 +215,29 @@ void main(){
   /* ----------------------------------------------------------------------
      Resolution: adaptive, so weaker GPUs stay smooth
      ---------------------------------------------------------------------- */
-  const maxScale = coarse ? .75 : 1.1;
+  const maxScale = coarse ? .7 : 1;
   const minScale = coarse ? .45 : .62;
-  let scale = coarse ? .6 : .9;
+  let scale = coarse ? .55 : .8;
   const forced = parseFloat(new URLSearchParams(location.search).get('scale')); // ?scale=0.9 pins render resolution
   if (forced > 0) scale = clamp(forced, .1, 1.5);
   const bctx = bloom.getContext('2d');
   // The stage is sized with 100lvh in CSS, so the phone's collapsing address bar never changes it.
   const VW = () => canvas.clientWidth || innerWidth;
   const VH = () => canvas.clientHeight || innerHeight;
-  let lastW = 0, lastH = 0;
+  let lastW = 0, lastH = 0, bloomW = 0, bloomH = 0;
   function resize() {
     lastW = VW(); lastH = VH();
     const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
     canvas.width = Math.max(2, Math.round(VW() * dpr * scale));
     canvas.height = Math.max(2, Math.round(VH() * dpr * scale));
     gl.viewport(0, 0, canvas.width, canvas.height);
-    bloom.width = Math.max(2, Math.ceil(VW() / 9));
-    bloom.height = Math.max(2, Math.ceil(VH() / 9));
+    // The glow canvas only changes size with the viewport, never with render-quality changes:
+    // resizing a canvas clears it, which showed up as a blink.
+    if (bloomW !== VW() || bloomH !== VH()) {
+      bloomW = VW(); bloomH = VH();
+      bloom.width = Math.max(2, Math.ceil(bloomW / 9));
+      bloom.height = Math.max(2, Math.ceil(bloomH / 9));
+    }
     measure();
     requestRedraw();
   }
@@ -320,7 +325,7 @@ void main(){
   const TUNE = [.5, .012, 3.8, 1.9];
   const cur = { dist: 38, elev: .05, sx: 0, sy: .07, dim: 0, focal: 2.2 };
   let mx = 0, my = 0, smx = 0, smy = 0;
-  let last = 0, time = 0, raf = 0, frames = 0, acc = 0, accN = 0, firstCamera = true;
+  let last = 0, time = 0, raf = 0, frames = 0, acc = 0, accN = 0, firstCamera = true, lastAdapt = 0, ceiling = 9;
   addEventListener('pointermove', e => {
     if (e.pointerType === 'touch' || reduced.matches) return;
     mx = e.clientX / innerWidth - .5; my = e.clientY / innerHeight - .5;
@@ -354,7 +359,7 @@ void main(){
     gl.uniform1f(U.uMotion, reduced.matches ? 0 : 1);
     const tu = window.__bhTune || TUNE; gl.uniform4f(U.uTune, tu[0], tu[1], tu[2], tu[3]);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
-    if ((frames & 1) === 0) { try { bctx.drawImage(canvas, 0, 0, bloom.width, bloom.height); } catch (e) {} }
+    if (frames % 3 === 0) { try { bctx.drawImage(canvas, 0, 0, bloom.width, bloom.height); } catch (e) {} }
     frames++;
     tasks.frames = frames; updateReal();
   }
@@ -374,17 +379,25 @@ void main(){
     raf = requestAnimationFrame(loop);
     const dt = last ? Math.min((now - last) / 1000, .1) : .016;
     last = now;
-    if (!reduced.matches) time += dt;
+    // A hitch (tab switch, GC, shader warm-up) must not make the disk rotation jump.
+    if (!reduced.matches) time += Math.min(dt, .034);
     loaderTick(now);
-    draw(now, dt);
 
-    // adaptive resolution
-    acc += dt; accN++;
-    if (accN >= 40 && !(forced > 0)) {
-      const ms = (acc / accN) * 1000; acc = 0; accN = 0;
-      if (ms > 34 && scale > minScale) { scale = Math.max(minScale, scale * .9); resize(); }
-      else if (ms < 17 && scale < maxScale) { scale = Math.min(maxScale, scale * 1.06); resize(); }
+    // Adaptive resolution. Rules that keep it invisible:
+    //  - never during the loader or the arrival move (those frames are not representative)
+    //  - decided BEFORE drawing, so a resized (cleared) canvas is redrawn in the same frame
+    //  - slow cooldown and small steps; once it has had to drop, it never climbs back above that level
+    const settled = dismissed && (now - arriveT0) > arriveDur + 800;
+    if (settled && !(forced > 0) && dt < .25) {
+      acc += dt; accN++;
+      if (accN >= 45 && now - lastAdapt > 4000) {
+        const ms = (acc / accN) * 1000; acc = 0; accN = 0;
+        if (ms > 30 && scale > minScale) { scale = Math.max(minScale, scale * .88); ceiling = Math.min(ceiling, scale * 1.05); lastAdapt = now; resize(); }
+        else if (ms < 17.5 && scale < Math.min(maxScale, ceiling)) { scale = Math.min(maxScale, ceiling, scale * 1.05); lastAdapt = now; resize(); }
+        else lastAdapt = now - 2000;
+      } else if (accN >= 45) { acc = 0; accN = 0; }
     }
+    draw(now, dt);
   }
 
   let redrawQueued = false;
