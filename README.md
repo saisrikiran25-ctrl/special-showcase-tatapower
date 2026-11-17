@@ -12,7 +12,7 @@ python -m http.server 8000 --directory dist
 
 Open http://localhost:8000. Serve over HTTP rather than opening the HTML file directly.
 
-Debug helpers: `?scale=0.8` pins the black hole's render resolution (otherwise it adapts to the GPU between 0.4 and 1.0 of native resolution on desktop, starting at 0.5 to 0.7, and renders at about 30 fps while the hole is only a dim backdrop). In the console, `window.__bhTune = [diskOpacity, haze, intensity, temperatureExponent]` live-tunes the accretion disk (defaults `[.5, .012, 3.8, 1.9]`).
+Debug helpers: `?scale=0.8` pins the black hole's render resolution (otherwise it adapts to the GPU between 0.62 and 1.1 of native resolution on desktop). In the console, `window.__bhTune = [diskOpacity, haze, intensity, temperatureExponent]` live-tunes the accretion disk (defaults `[.5, .012, 3.8, 1.9]`).
 
 ## Files
 

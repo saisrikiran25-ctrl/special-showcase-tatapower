@@ -15,12 +15,13 @@
    - Stars are looked up with the *bent* exit direction, so they stream and smear.
    One fixed canvas serves the whole page: a camera "director" flies the hole as you
    scroll (far reveal -> dive -> dim backdrop -> contact close-up), plus a small blurred
-   adaptive resolution, loader orchestration and reduced-motion mode.
+   2D copy for bloom, adaptive resolution, loader orchestration and reduced-motion mode.
    ========================================================================== */
 (() => {
   'use strict';
   const html = document.documentElement;
   const canvas = document.getElementById('orbit');
+  const bloom = document.getElementById('bloom');
   const loader = document.querySelector('.loader');
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
   const coarse = matchMedia('(hover: none) and (pointer: coarse)').matches;
@@ -214,13 +215,12 @@ void main(){
   /* ----------------------------------------------------------------------
      Resolution: adaptive, so weaker GPUs stay smooth
      ---------------------------------------------------------------------- */
-  // Start modest, climb only if the GPU proves it can afford it, and drop quickly when it cannot.
-  const lowEnd = coarse || (navigator.hardwareConcurrency || 8) <= 4 || (navigator.deviceMemory || 8) <= 4;
-  const maxScale = coarse ? .7 : 1;
-  const minScale = coarse ? .38 : .4;
-  let scale = lowEnd ? .5 : .7;
+  const maxScale = coarse ? .75 : 1.1;
+  const minScale = coarse ? .45 : .62;
+  let scale = coarse ? .6 : .9;
   const forced = parseFloat(new URLSearchParams(location.search).get('scale')); // ?scale=0.9 pins render resolution
   if (forced > 0) scale = clamp(forced, .1, 1.5);
+  const bctx = bloom.getContext('2d');
   // The stage is sized with 100lvh in CSS, so the phone's collapsing address bar never changes it.
   const VW = () => canvas.clientWidth || innerWidth;
   const VH = () => canvas.clientHeight || innerHeight;
@@ -231,6 +231,8 @@ void main(){
     canvas.width = Math.max(2, Math.round(VW() * dpr * scale));
     canvas.height = Math.max(2, Math.round(VH() * dpr * scale));
     gl.viewport(0, 0, canvas.width, canvas.height);
+    bloom.width = Math.max(2, Math.ceil(VW() / 9));
+    bloom.height = Math.max(2, Math.ceil(VH() / 9));
     measure();
     requestRedraw();
   }
@@ -318,7 +320,7 @@ void main(){
   const TUNE = [.5, .012, 3.8, 1.9];
   const cur = { dist: 38, elev: .05, sx: 0, sy: .07, dim: 0, focal: 2.2 };
   let mx = 0, my = 0, smx = 0, smy = 0;
-  let last = 0, time = 0, raf = 0, frames = 0, acc = 0, accN = 0, firstCamera = true, lastDraw = 0, lastAdapt = 0;
+  let last = 0, time = 0, raf = 0, frames = 0, acc = 0, accN = 0, firstCamera = true;
   addEventListener('pointermove', e => {
     if (e.pointerType === 'touch' || reduced.matches) return;
     mx = e.clientX / innerWidth - .5; my = e.clientY / innerHeight - .5;
@@ -347,11 +349,12 @@ void main(){
     gl.uniform1f(U.uElev, elev);
     gl.uniform1f(U.uFocal, cur.focal);
     gl.uniform1f(U.uDim, dim);
-    gl.uniform1f(U.uSteps, lowEnd ? 84 : 100);
+    gl.uniform1f(U.uSteps, coarse ? 104 : 118);
     gl.uniform1f(U.uExp, .55 + .45 * ea);
     gl.uniform1f(U.uMotion, reduced.matches ? 0 : 1);
     const tu = window.__bhTune || TUNE; gl.uniform4f(U.uTune, tu[0], tu[1], tu[2], tu[3]);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
+    if ((frames & 1) === 0) { try { bctx.drawImage(canvas, 0, 0, bloom.width, bloom.height); } catch (e) {} }
     frames++;
     tasks.frames = frames; updateReal();
   }
@@ -373,26 +376,15 @@ void main(){
     last = now;
     if (!reduced.matches) time += dt;
     loaderTick(now);
-
-    // Behind the content (dim backdrop) the hole only needs ~30 fps: halves GPU load while reading.
-    const backdrop = cur.dim < .6 && dismissed;
-    if (backdrop && now - lastDraw < 30) return;
-    const frameMs = now - lastDraw;
-    lastDraw = now;
-
-    // Adaptive resolution, decided BEFORE drawing so a resized (cleared) canvas is never presented empty.
-    if (!(forced > 0) && dismissed && frameMs < 250) {
-      acc += frameMs; accN++;
-      if (accN >= 30 && now - lastAdapt > 1500) {
-        const ms = acc / accN; acc = 0; accN = 0;
-        // ms is the real frame interval: ~16.7 means a smooth 60 fps, ~33 a smooth 30 fps (backdrop mode).
-        const slow = backdrop ? 46 : 28, fast = backdrop ? 35 : 17.5;
-        if (ms > slow && scale > minScale) { scale = Math.max(minScale, scale * .85); lastAdapt = now; resize(); }
-        else if (ms < fast && scale < maxScale) { scale = Math.min(maxScale, scale * 1.08); lastAdapt = now; resize(); }
-        else lastAdapt = now;
-      }
-    }
     draw(now, dt);
+
+    // adaptive resolution
+    acc += dt; accN++;
+    if (accN >= 40 && !(forced > 0)) {
+      const ms = (acc / accN) * 1000; acc = 0; accN = 0;
+      if (ms > 34 && scale > minScale) { scale = Math.max(minScale, scale * .9); resize(); }
+      else if (ms < 17 && scale < maxScale) { scale = Math.min(maxScale, scale * 1.06); resize(); }
+    }
   }
 
   let redrawQueued = false;
